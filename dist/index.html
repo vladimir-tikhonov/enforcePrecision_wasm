@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Оптимизации без границ</title>
+
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/benchmark/2.1.1/benchmark.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.15.0/lodash.js"></script>
+
+    <script type="text/javascript" src="./enforcePrecision.js"></script>
+</head>
+
+<body>
+    <span><i>chrome://flags</i> -> <i>enable-webassembly</i> и <i>startBenchmark()</i> в консоли</span>
+
+    <script type="text/javascript">
+        fetch("enforcePrecision.wasm")
+            .then(function(response) {
+                return response.arrayBuffer();
+            })
+            .then(function(buffer) {
+                var dependencies = {
+                    "global": {}
+                };
+                dependencies["global.Math"] = window.Math;
+                var moduleBufferView = new Uint8Array(buffer);
+                var coolPlannerOptimizations = Wasm.instantiateModule(moduleBufferView, dependencies);
+                window.enforcePrecisionWasm = coolPlannerOptimizations.exports.enforcePrecisionWasm;
+            });
+    </script>
+
+    <script type="text/javascript">
+        function startBenchmark() {
+            function getRepeatRandom(n) {
+                var counter = n;
+                var random = Math.random();
+                return function() {
+                    if (counter) {
+                        counter--;
+                    } else {
+                        counter = n - 1;
+                        random = Math.random();
+                    }
+                    return random;
+                }
+            }
+
+            var r5 = getRepeatRandom(20);
+
+            var suite = new Benchmark.runInContext().Suite();
+
+            var N = 20;
+            var k = 2;
+
+            var cacheKiller = 0;
+
+            suite
+                .add('enforcePrecisionWasm #1', function() {
+                    for (var i = 0; i < N; i++)
+                        cacheKiller += enforcePrecisionWasm(Math.random(), k);
+                })
+                .add('enforcePrecisionWasm #2', function() {
+                    var r = Math.random();
+                    for (var i = 0; i < N; i++)
+                        cacheKiller += enforcePrecisionWasm(r, k);
+                })
+                .add('enforcePrecisionJs #1', function() {
+                    for (var i = 0; i < N; i++)
+                        cacheKiller += enforcePrecisionJs(Math.random(), k);
+                })
+                .add('enforcePrecisionJs #2', function() {
+                    var r = Math.random();
+                    for (var i = 0; i < N; i++)
+                        cacheKiller += enforcePrecisionJs(r, k);
+                })
+                .on('cycle', function(event) {
+                    console.log(String(event.target));
+                })
+                .on('complete', function() {
+                    window.cacheKiller = cacheKiller;
+                    console.log('Fastest is ' + this.filter('fastest').map('name'));
+                })
+                .run({
+                    'async': true
+                });
+        }
+    </script>
+</body>
+
+</html>
